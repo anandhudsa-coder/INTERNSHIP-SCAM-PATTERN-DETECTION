@@ -1,0 +1,94 @@
+import pandas as pd
+import re
+
+# Suspicious patterns
+suspicious_domains = ["gmail.com", "yahoo.com", "outlook.com"]
+suspicious_keywords = [
+    "registration fee",
+    "pay fee",
+    "urgent",
+    "limited seats",
+    "no experience required",
+    "guaranteed placement"
+]
+
+def calculate_scam_score(row):
+    score = 0
+    red_flags = []
+
+    # High stipend check
+    # Check if 'Stipend' column exists and is not NaN before accessing
+    if 'Stipend' in row and pd.notna(row['Stipend']) and row['Stipend'] > 40000:
+        score += 30
+        red_flags.append("Unusually High Stipend")
+
+    # Email domain check
+    domain = ""
+    # Check if 'Email' column exists and is not NaN before processing
+    if 'Email' in row and pd.notna(row['Email']):
+        domain = str(row['Email']).split("@")[-1]
+    if domain in suspicious_domains:
+        score += 25
+        red_flags.append("Free Email Domain")
+
+    #  Keyword check
+    description = ""
+    # Check if 'Description' column exists and is not NaN before processing
+    if 'Description' in row and pd.notna(row['Description']):
+        description = str(row['Description']).lower()
+    for keyword in suspicious_keywords:
+        if keyword in description:
+            score += 15
+            red_flags.append(f"Keyword: {keyword}")
+
+    # Limit score to 100
+    score = min(score, 100)
+
+    # Risk Level
+    if score >= 70:
+        risk = "High"
+    elif score >= 40:
+        risk = "Medium"
+    else:
+        risk = "Low"
+
+    # Return a Series with explicitly named columns
+    return pd.Series({
+        "Scam Score": score,
+        "Risk Level": risk,
+        "Red Flags": ", ".join(red_flags)
+    })
+
+# Read Excel file
+# Read the Excel file, assuming the actual headers are in the first row (index 0)
+# but there might be initial empty columns. We'll promote the first meaningful row as header.
+df = pd.read_excel("/content/internship_data.xlsx")
+
+# Clean up the DataFrame: drop columns that are entirely NaN in the first data row,
+# then promote the first row to be the new header.
+if not df.empty:
+    # Drop columns that are entirely NaN in the first row (which likely contains the actual headers)
+    df_cleaned = df.dropna(axis=1, how='all', subset=[0])
+
+    # Promote the first row of the cleaned DataFrame to be the header
+    new_header = df_cleaned.iloc[0]
+    df_cleaned = df_cleaned[1:] # Take the data less the header row
+    df_cleaned.columns = new_header # Set the new header
+    df_cleaned = df_cleaned.reset_index(drop=True) # Reset index for clean data
+    df = df_cleaned.copy()
+else:
+    print("Warning: The input Excel file was empty after initial read. No cleaning performed.")
+
+# Apply detection
+# Handle case where df might be empty after reading Excel or cleaning
+if df.empty:
+    print("Warning: The input Excel file is empty. No scam detection performed.")
+    # Create an empty DataFrame with the expected output columns
+    df = pd.DataFrame(columns=["Scam Score", "Risk Level", "Red Flags"])
+else:
+    df[["Scam Score", "Risk Level", "Red Flags"]] = df.apply(calculate_scam_score, axis=1)
+
+# Save results
+df.to_excel("internship_results.xlsx", index=False)
+
+print("Analysis Complete. Results saved to internship_results.xlsx")
